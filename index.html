@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <meta name="theme-color" content="#0a5c6b" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="MST Dashboard" />
+  <title>Monthstayz Master Dashboard</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- ─── SCREEN: HOME ─────────────────────────────────────────── -->
+<div class="screen active" id="screen-home">
+  <div class="home-bg"></div>
+  <header class="top-bar">
+    <img src="logo.png" alt="Monthstayz" class="logo" onerror="this.style.display='none'">
+    <div class="logo-text">Monthstayz</div>
+  </header>
+  <main class="home-main">
+    <div class="welcome-block">
+      <p class="welcome-sub">Welcome to</p>
+      <h1 class="welcome-title">Monthstayz Thailand<br>Master Dashboard</h1>
+    </div>
+    <p class="choose-label">Select your region</p>
+    <div class="city-buttons">
+      <button class="city-btn" onclick="selectCity('Pattaya')">
+        <span class="city-icon">🏖️</span>
+        <span class="city-name">Pattaya</span>
+        <span class="city-sub">Gulf of Thailand</span>
+      </button>
+      <button class="city-btn" onclick="selectCity('Phuket')">
+        <span class="city-icon">🌴</span>
+        <span class="city-name">Phuket</span>
+        <span class="city-sub">Andaman Sea</span>
+      </button>
+    </div>
+  </main>
+  <footer class="home-footer">
+    <span>Monthstayz Thailand © 2025</span>
+  </footer>
+</div>
+
+<!-- ─── SCREEN: CITY HUB ─────────────────────────────────────── -->
+<div class="screen" id="screen-hub">
+  <header class="top-bar">
+    <button class="back-btn" onclick="goHome()">← Back</button>
+    <div class="logo-text">Monthstayz</div>
+    <div class="city-badge" id="hub-city-badge"></div>
+  </header>
+  <main class="hub-main">
+    <h2 class="hub-title" id="hub-title">Pattaya</h2>
+    <p class="hub-sub">What would you like to view?</p>
+    <div class="hub-buttons">
+      <button class="hub-btn" onclick="openSection('trips')">
+        <div class="hub-btn-icon">✈️</div>
+        <div class="hub-btn-text">
+          <div class="hub-btn-title">Trips Information</div>
+          <div class="hub-btn-desc">Check-ins, Check-outs & Bookings</div>
+        </div>
+        <div class="hub-btn-arrow">›</div>
+      </button>
+      <button class="hub-btn" onclick="openSection('properties')">
+        <div class="hub-btn-icon">🏠</div>
+        <div class="hub-btn-text">
+          <div class="hub-btn-title">Property Information</div>
+          <div class="hub-btn-desc">Listings, details & access info</div>
+        </div>
+        <div class="hub-btn-arrow">›</div>
+      </button>
+      <button class="hub-btn" onclick="openSection('availability')">
+        <div class="hub-btn-icon">📅</div>
+        <div class="hub-btn-text">
+          <div class="hub-btn-title">Property Availability</div>
+          <div class="hub-btn-desc">Live calendar & availability view</div>
+        </div>
+        <div class="hub-btn-arrow">›</div>
+      </button>
+    </div>
+  </main>
+</div>
+
+<!-- ─── SCREEN: TRIPS ─────────────────────────────────────────── -->
+<div class="screen" id="screen-trips">
+  <header class="top-bar">
+    <button class="back-btn" onclick="goHub()">← Back</button>
+    <div class="screen-title">Trips Information</div>
+    <div class="city-badge" id="trips-city-badge"></div>
+  </header>
+  <div class="filter-bar">
+    <div class="filter-group">
+      <label>Type</label>
+      <div class="seg-ctrl">
+        <button class="seg active" data-type="checkin" onclick="setTripType('checkin', this)">Check-ins</button>
+        <button class="seg" data-type="checkout" onclick="setTripType('checkout', this)">Check-outs</button>
+        <button class="seg" data-type="both" onclick="setTripType('both', this)">Both</button>
+      </div>
+    </div>
+    <div class="filter-group">
+      <label>Date Range</label>
+      <select id="date-filter" onchange="applyTripsFilters()">
+        <option value="today">Today</option>
+        <option value="tomorrow">Tomorrow</option>
+        <option value="today+3">Today + 3 days</option>
+        <option value="today+4">Today + 4 days</option>
+        <option value="today+5">Today + 5 days</option>
+        <option value="week">This Week</option>
+        <option value="custom">Custom Range</option>
+      </select>
+    </div>
+    <div class="filter-group" id="custom-date-row" style="display:none">
+      <label>From</label>
+      <input type="date" id="custom-from" onchange="applyTripsFilters()">
+      <label>To</label>
+      <input type="date" id="custom-to" onchange="applyTripsFilters()">
+    </div>
+  </div>
+  <div class="data-container" id="trips-container">
+    <div class="loading-state">
+      <div class="spinner"></div>
+      <p>Loading trips…</p>
+    </div>
+  </div>
+</div>
+
+<!-- ─── SCREEN: PROPERTIES ───────────────────────────────────── -->
+<div class="screen" id="screen-properties">
+  <header class="top-bar">
+    <button class="back-btn" onclick="goHub()">← Back</button>
+    <div class="screen-title">Property Information</div>
+    <div class="city-badge" id="props-city-badge"></div>
+  </header>
+  <div class="filter-bar">
+    <input type="search" id="prop-search" placeholder="🔍 Search property…" oninput="filterProperties()" />
+  </div>
+  <div class="data-container" id="props-container">
+    <div class="loading-state">
+      <div class="spinner"></div>
+      <p>Loading properties…</p>
+    </div>
+  </div>
+</div>
+
+<!-- ─── SCREEN: AVAILABILITY ─────────────────────────────────── -->
+<div class="screen" id="screen-availability">
+  <header class="top-bar">
+    <button class="back-btn" onclick="goHub()">← Back</button>
+    <div class="screen-title">Property Availability</div>
+    <div class="city-badge" id="avail-city-badge"></div>
+  </header>
+  <div class="iframe-wrapper">
+    <iframe
+      id="avail-iframe"
+      src="https://script.google.com/a/macros/monthstayzthailand.com/s/AKfycbxabIRIGkxr44KAoFyDaLSkI8kthZWSYg3SbYmsV4fvqwF_-mH3vAkdmv5ahCETxCkO/exec"
+      frameborder="0"
+      allowfullscreen
+      title="Property Availability Dashboard">
+    </iframe>
+    <div class="iframe-fallback" id="avail-fallback" style="display:none">
+      <div class="fallback-icon">📅</div>
+      <h3>Property Availability</h3>
+      <p>Open the availability dashboard in your browser:</p>
+      <a href="https://script.google.com/a/macros/monthstayzthailand.com/s/AKfycbxabIRIGkxr44KAoFyDaLSkI8kthZWSYg3SbYmsV4fvqwF_-mH3vAkdmv5ahCETxCkO/exec"
+         target="_blank" class="open-link-btn">Open Dashboard ↗</a>
+    </div>
+  </div>
+</div>
+
+<!-- ─── PROPERTY DETAIL MODAL ────────────────────────────────── -->
+<div class="modal-overlay" id="prop-modal" onclick="closePropModal(event)">
+  <div class="modal-card" id="prop-modal-card">
+    <button class="modal-close" onclick="closePropModalDirect()">✕</button>
+    <div id="prop-modal-body"></div>
+  </div>
+</div>
+
+<!-- ─── TRIP DETAIL MODAL ─────────────────────────────────────── -->
+<div class="modal-overlay" id="trip-modal" onclick="closeTripModal(event)">
+  <div class="modal-card" id="trip-modal-card">
+    <button class="modal-close" onclick="closeTripModalDirect()">✕</button>
+    <div id="trip-modal-body"></div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
