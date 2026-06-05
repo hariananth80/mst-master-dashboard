@@ -1,12 +1,10 @@
 /* ═══════════════════════════════════════════════════
    MST Master Dashboard — app.js
-   Uses the Google Apps Script backend (GAS_URL) to proxy Airtable API
    ═══════════════════════════════════════════════════ */
 
 'use strict';
 
-// ─── CONFIG ──────────────────────────────────────────────────────────────────
-// Replace GAS_URL with your deployed Google Apps Script web app URL
+// ─── CONFIG ───────────────────────────────────────────────────────────────────
 const GAS_URL = 'https://script.google.com/macros/s/AKfycbwt5QknowMzoNAFA3nEAmMTYp8vVDxp5IYO81oHjevwGs3Iy-mEaDyXSoU3-jLJ-91D/exec';
 
 // ─── STATE ────────────────────────────────────────────────────────────────────
@@ -20,7 +18,6 @@ function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => {
     if (s.id === id) {
       s.classList.remove('slide-out');
-      // Force reflow
       void s.offsetWidth;
       s.classList.add('active');
     } else if (s.classList.contains('active')) {
@@ -43,72 +40,93 @@ function goHub()  { showScreen('screen-hub'); }
 
 function openSection(section) {
   const screenId = `screen-${
-    section === 'trips'        ? 'trips'        :
-    section === 'properties'   ? 'properties'   : 'availability'
+    section === 'trips'      ? 'trips'      :
+    section === 'properties' ? 'properties' : 'availability'
   }`;
   showScreen(screenId);
-
-  if (section === 'trips') {
-    loadTrips();
-  } else if (section === 'properties') {
-    loadProperties();
-  }
+  if (section === 'trips')      loadTrips();
+  if (section === 'properties') loadProperties();
 }
 
 // ─── DATE HELPERS ─────────────────────────────────────────────────────────────
 function toISO(date) {
-  return date.toISOString().split('T')[0];
+  // Use local date parts to avoid timezone shifting
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
-function getDateRange() {
+function getTargetDate() {
   const val = document.getElementById('date-filter').value;
-  const today = new Date();
-  today.setHours(0,0,0,0);
 
   if (val === 'custom') {
     return {
       from: document.getElementById('custom-from').value,
-      to:   document.getElementById('custom-to').value
+      to:   document.getElementById('custom-to').value,
+      isRange: true
     };
   }
 
-  let from = new Date(today);
-  let to   = new Date(today);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
 
-  if (val === 'tomorrow') {
-    from.setDate(from.getDate() + 1);
-    to.setDate(to.getDate() + 1);
-  } else if (val === 'today+3') {
-    to.setDate(to.getDate() + 3);
-  } else if (val === 'today+4') {
-    to.setDate(to.getDate() + 4);
-  } else if (val === 'today+5') {
-    to.setDate(to.getDate() + 5);
-  } else if (val === 'week') {
-    to.setDate(to.getDate() + 6);
+  if (val === 'week') {
+    const end = new Date(today);
+    end.setDate(today.getDate() + 6);
+    return { from: toISO(today), to: toISO(end), isRange: true };
   }
-  // default: today only (from === to)
 
-  return { from: toISO(from), to: toISO(to) };
+  // All other options = single specific day
+  const target = new Date(today);
+  if      (val === 'tomorrow') target.setDate(today.getDate() + 1);
+  else if (val === 'today+2')  target.setDate(today.getDate() + 2);
+  else if (val === 'today+3')  target.setDate(today.getDate() + 3);
+  else if (val === 'today+4')  target.setDate(today.getDate() + 4);
+  else if (val === 'today+5')  target.setDate(today.getDate() + 5);
+  // else val === 'today' → target stays as today
+
+  const iso = toISO(target);
+  return { from: iso, to: iso, isRange: false };
 }
 
-document.getElementById('date-filter').addEventListener('change', function() {
-  const customRow = document.getElementById('custom-date-row');
-  customRow.style.display = this.value === 'custom' ? 'flex' : 'none';
+document.getElementById('date-filter').addEventListener('change', function () {
+  document.getElementById('custom-date-row').style.display =
+    this.value === 'custom' ? 'flex' : 'none';
   applyTripsFilters();
 });
 
-function applyTripsFilters() {
-  const { from, to } = getDateRange();
-  const filtered = allTrips.filter(t => {
-    const ci = t.fields['Arrival Date']   || '';
-    const co = t.fields['Checkout Date']  || '';
+// ─── CITY FILTER HELPER ───────────────────────────────────────────────────────
+// The 'City' field on Master Trips is a lookup — it comes back as an array
+// e.g. ["Pattaya"] or ["Phuket"]. We check if selectedCity appears in it.
+function tripMatchesCity(t) {
+  if (!selectedCity) return true;
+  const cityVal = t.fields['City'];
+  if (!cityVal) return false;
+  if (Array.isArray(cityVal)) {
+    return cityVal.some(c => c === selectedCity);
+  }
+  return String(cityVal) === selectedCity;
+}
 
+// ─── TRIPS FILTER & RENDER ────────────────────────────────────────────────────
+function applyTripsFilters() {
+  const { from, to } = getTargetDate();
+
+  const filtered = allTrips.filter(t => {
+    // First: city filter
+    if (!tripMatchesCity(t)) return false;
+
+    const ci = t.fields['Arrival Date']  || '';
+    const co = t.fields['Checkout Date'] || '';
+
+    // Then: date filter — exact day match (from === to) or range
     if (tripType === 'checkin')  return ci >= from && ci <= to;
     if (tripType === 'checkout') return co >= from && co <= to;
     // both
     return (ci >= from && ci <= to) || (co >= from && co <= to);
   });
+
   renderTrips(filtered);
 }
 
@@ -119,23 +137,22 @@ function setTripType(type, btn) {
   applyTripsFilters();
 }
 
-// ─── AIRTABLE / GAS FETCH ─────────────────────────────────────────────────────
-async function fetchFromGAS(action, params = {}) {
+// ─── GAS FETCH ────────────────────────────────────────────────────────────────
+async function fetchFromGAS(action) {
   const url = new URL(GAS_URL);
   url.searchParams.set('action', action);
   url.searchParams.set('city', selectedCity);
-  Object.entries(params).forEach(([k,v]) => url.searchParams.set(k, v));
-
   const res = await fetch(url.toString());
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
+  const data = await res.json();
+  if (data.error) throw new Error(data.error);
+  return data;
 }
 
 // ─── TRIPS ────────────────────────────────────────────────────────────────────
 async function loadTrips() {
   const container = document.getElementById('trips-container');
   container.innerHTML = `<div class="loading-state"><div class="spinner"></div><p>Loading trips…</p></div>`;
-
   try {
     const data = await fetchFromGAS('trips');
     allTrips = data.records || [];
@@ -143,9 +160,8 @@ async function loadTrips() {
   } catch (e) {
     container.innerHTML = `
       <div class="error-state">
-        <strong>⚠️ Could not load trips</strong><br>
-        ${e.message}<br><br>
-        <small>Make sure the Google Apps Script is deployed and the URL is configured.</small>
+        <strong>⚠️ Could not load trips</strong><br>${e.message}<br><br>
+        <small>Check the Google Apps Script is deployed and URL is set in app.js.</small>
       </div>`;
   }
 }
@@ -157,46 +173,49 @@ function renderTrips(trips) {
     return;
   }
 
-  const { from, to } = getDateRange();
-  const checkinsArr  = [];
-  const checkoutsArr = [];
+  const { from, to } = getTargetDate();
+
+  // Split into check-ins and check-outs for "both" mode
+  const checkins  = [];
+  const checkouts = [];
 
   trips.forEach(t => {
-    const ci = t.fields['Arrival Date'];
-    const co = t.fields['Checkout Date'];
-    if ((tripType === 'checkin' || tripType === 'both') && ci >= from && ci <= to) {
-      checkinsArr.push({ ...t, _type: 'checkin' });
-    }
-    if ((tripType === 'checkout' || tripType === 'both') && co >= from && co <= to) {
-      checkoutsArr.push({ ...t, _type: 'checkout' });
-    }
+    const ci = t.fields['Arrival Date']  || '';
+    const co = t.fields['Checkout Date'] || '';
+    const addedAsCheckin  = (tripType === 'checkin'  || tripType === 'both') && ci >= from && ci <= to;
+    const addedAsCheckout = (tripType === 'checkout' || tripType === 'both') && co >= from && co <= to;
+    if (addedAsCheckin)  checkins.push({ ...t, _type: 'checkin' });
+    if (addedAsCheckout) checkouts.push({ ...t, _type: 'checkout' });
   });
 
-  // Sort by date
-  checkinsArr.sort((a,b)  => (a.fields['Arrival Date']  || '').localeCompare(b.fields['Arrival Date']  || ''));
-  checkoutsArr.sort((a,b) => (a.fields['Checkout Date'] || '').localeCompare(b.fields['Checkout Date'] || ''));
+  checkins.sort( (a,b) => (a.fields['Arrival Date']  ||'').localeCompare(b.fields['Arrival Date']  ||''));
+  checkouts.sort((a,b) => (a.fields['Checkout Date'] ||'').localeCompare(b.fields['Checkout Date'] ||''));
 
-  const combined = [...checkinsArr, ...checkoutsArr];
+  let html = '';
+
   if (tripType === 'both') {
-    combined.sort((a,b) => {
-      const aDate = a._type === 'checkin' ? a.fields['Arrival Date'] : a.fields['Checkout Date'];
-      const bDate = b._type === 'checkin' ? b.fields['Arrival Date'] : b.fields['Checkout Date'];
-      return (aDate||'').localeCompare(bDate||'');
-    });
+    if (checkins.length)  html += `<div class="section-header">✅ Check-ins (${checkins.length})</div>`  + checkins.map(t => tripCard(t)).join('');
+    if (checkouts.length) html += `<div class="section-header">🚪 Check-outs (${checkouts.length})</div>` + checkouts.map(t => tripCard(t)).join('');
+  } else if (tripType === 'checkin') {
+    html = checkins.map(t => tripCard(t)).join('');
+  } else {
+    html = checkouts.map(t => tripCard(t)).join('');
   }
 
-  container.innerHTML = combined.map(t => tripCard(t, t._type)).join('');
+  container.innerHTML = html;
 }
 
-function tripCard(t, type) {
-  const f = t.fields;
+function tripCard(t) {
+  const f        = t.fields;
   const name     = f['Trip Name'] || '—';
-  const fullName = (f['Full Name (from CRM contact)'] || []).join(', ') || '—';
-  const group    = f['Customer group naming'] || '—';
+  const fullName = Array.isArray(f['Full Name (from CRM contact)'])
+    ? f['Full Name (from CRM contact)'].join(', ')
+    : (f['Full Name (from CRM contact)'] || '—');
   const channel  = f['Channel contact'] || '—';
   const ci       = f['Arrival Date']  ? fmtDate(f['Arrival Date'])  : '—';
   const co       = f['Checkout Date'] ? fmtDate(f['Checkout Date']) : '—';
-  const prop     = (f['Property (for automations)'] || '—');
+  const prop     = f['Property (for automations)'] || '—';
+  const type     = t._type;
 
   return `
     <div class="trip-card" onclick="openTripDetail('${t.id}')">
@@ -219,30 +238,28 @@ function openTripDetail(id) {
   const t = allTrips.find(r => r.id === id);
   if (!t) return;
   const f = t.fields;
-
-  const fullName = (f['Full Name (from CRM contact)'] || []).join(', ') || '—';
-  const group    = f['Customer group naming'] || '—';
-  const channel  = f['Channel contact'] || '—';
-  const ci       = f['Arrival Date']  ? fmtDate(f['Arrival Date'])  : '—';
-  const co       = f['Checkout Date'] ? fmtDate(f['Checkout Date']) : '—';
-  const prop     = f['Property (for automations)'] || '—';
-  const notes    = f['Check-in Notes'] || '—';
+  const fullName = Array.isArray(f['Full Name (from CRM contact)'])
+    ? f['Full Name (from CRM contact)'].join(', ')
+    : (f['Full Name (from CRM contact)'] || '—');
+  const ci    = f['Arrival Date']  ? fmtDate(f['Arrival Date'])  : '—';
+  const co    = f['Checkout Date'] ? fmtDate(f['Checkout Date']) : '—';
+  const notes = f['Check-in Notes'] || '';
 
   document.getElementById('trip-modal-body').innerHTML = `
     <div class="modal-title">${esc(f['Trip Name'] || '—')}</div>
     <div class="detail-section">
       <div class="detail-section-title">Customer</div>
       <div class="detail-row"><div class="detail-label">Full Name</div><div class="detail-value">${esc(fullName)}</div></div>
-      <div class="detail-row"><div class="detail-label">Group Name</div><div class="detail-value">${esc(group)}</div></div>
-      <div class="detail-row"><div class="detail-label">Channel</div><div class="detail-value">${esc(channel)}</div></div>
+      <div class="detail-row"><div class="detail-label">Group Name</div><div class="detail-value">${esc(f['Customer group naming'] || '—')}</div></div>
+      <div class="detail-row"><div class="detail-label">Channel</div><div class="detail-value">${esc(f['Channel contact'] || '—')}</div></div>
     </div>
     <div class="detail-section">
       <div class="detail-section-title">Stay Details</div>
       <div class="detail-row"><div class="detail-label">Check-in</div><div class="detail-value">${ci}</div></div>
       <div class="detail-row"><div class="detail-label">Check-out</div><div class="detail-value">${co}</div></div>
-      <div class="detail-row"><div class="detail-label">Property</div><div class="detail-value">${esc(prop)}</div></div>
+      <div class="detail-row"><div class="detail-label">Property</div><div class="detail-value">${esc(f['Property (for automations)'] || '—')}</div></div>
     </div>
-    ${notes !== '—' ? `
+    ${notes ? `
     <div class="detail-section">
       <div class="detail-section-title">Check-in Notes</div>
       <div class="detail-row"><div class="detail-value" style="width:100%">${esc(notes)}</div></div>
@@ -251,28 +268,27 @@ function openTripDetail(id) {
   document.getElementById('trip-modal').classList.add('open');
 }
 
-function closeTripModal(e) {
-  if (e.target === document.getElementById('trip-modal')) closeTripModalDirect();
-}
-function closeTripModalDirect() {
-  document.getElementById('trip-modal').classList.remove('open');
-}
+function closeTripModal(e)  { if (e.target === document.getElementById('trip-modal')) closeTripModalDirect(); }
+function closeTripModalDirect() { document.getElementById('trip-modal').classList.remove('open'); }
 
-// ─── PROPERTIES ──────────────────────────────────────────────────────────────
+// ─── PROPERTIES ───────────────────────────────────────────────────────────────
 async function loadProperties() {
   const container = document.getElementById('props-container');
   container.innerHTML = `<div class="loading-state"><div class="spinner"></div><p>Loading properties…</p></div>`;
-
   try {
     const data = await fetchFromGAS('properties');
-    allProperties = data.records || [];
+    // Properties city filter is handled in GAS (single select field), but double-check here
+    allProperties = (data.records || []).filter(p => {
+      if (!selectedCity) return true;
+      const c = p.fields['City'];
+      if (Array.isArray(c)) return c.some(v => v === selectedCity);
+      return c === selectedCity;
+    });
     filterProperties();
   } catch (e) {
     container.innerHTML = `
       <div class="error-state">
-        <strong>⚠️ Could not load properties</strong><br>
-        ${e.message}<br><br>
-        <small>Make sure the Google Apps Script is deployed and configured.</small>
+        <strong>⚠️ Could not load properties</strong><br>${e.message}
       </div>`;
   }
 }
@@ -280,9 +296,10 @@ async function loadProperties() {
 function filterProperties() {
   const q = (document.getElementById('prop-search').value || '').toLowerCase();
   const filtered = allProperties.filter(p => {
+    if (!q) return true;
     const name = (p.fields['Internal listing name'] || '').toLowerCase();
     const loc  = (p.fields['Location'] || '').toLowerCase();
-    return !q || name.includes(q) || loc.includes(q);
+    return name.includes(q) || loc.includes(q);
   });
   renderProperties(filtered);
 }
@@ -302,11 +319,10 @@ function propCard(p) {
   const floor = f['Floor'] != null ? `Floor ${f['Floor']}` : '';
   const view  = Array.isArray(f['View type']) ? f['View type'].join(', ') : (f['View type'] || '');
   const loc   = f['Location'] || '';
-  const beds  = f['Number of bedrooms'] != null ? `${f['Number of bedrooms']} bed` : '';
+  const beds  = f['Number of bedrooms']  != null ? `${f['Number of bedrooms']} bed`  : '';
   const baths = f['Number of bathrooms'] != null ? `${f['Number of bathrooms']} bath` : '';
-  const size  = f['(m2) Property Size'] ? `${f['(m2) Property Size']} m²` : '';
+  const size  = f['(m2) Property Size']  ? `${f['(m2) Property Size']} m²` : '';
   const tier  = f['Standard/Deluxe/Premium'] || '';
-
   const tierClass = tier === 'Premium' ? 'tier-premium' : tier === 'Deluxe' ? 'tier-deluxe' : 'tier-standard';
 
   return `
@@ -316,12 +332,12 @@ function propCard(p) {
         ${tier ? `<div class="prop-tier-badge ${tierClass}">${esc(tier)}</div>` : ''}
       </div>
       <div class="prop-meta">
-        ${loc ? `<div class="prop-meta-item"><span>📍</span>${esc(loc)}</div>` : ''}
-        ${floor ? `<div class="prop-meta-item"><span>🏢</span>${floor}</div>` : ''}
-        ${view ? `<div class="prop-meta-item"><span>🌅</span>${esc(view)}</div>` : ''}
-        ${beds ? `<div class="prop-meta-item"><span>🛏️</span>${beds}</div>` : ''}
-        ${baths ? `<div class="prop-meta-item"><span>🚿</span>${baths}</div>` : ''}
-        ${size ? `<div class="prop-meta-item"><span>📐</span>${size}</div>` : ''}
+        ${loc   ? `<div class="prop-meta-item"><span>📍</span>${esc(loc)}</div>`   : ''}
+        ${floor ? `<div class="prop-meta-item"><span>🏢</span>${floor}</div>`      : ''}
+        ${view  ? `<div class="prop-meta-item"><span>🌅</span>${esc(view)}</div>`  : ''}
+        ${beds  ? `<div class="prop-meta-item"><span>🛏️</span>${beds}</div>`      : ''}
+        ${baths ? `<div class="prop-meta-item"><span>🚿</span>${baths}</div>`     : ''}
+        ${size  ? `<div class="prop-meta-item"><span>📐</span>${size}</div>`       : ''}
       </div>
     </div>`;
 }
@@ -330,36 +346,29 @@ function openPropDetail(id) {
   const p = allProperties.find(r => r.id === id);
   if (!p) return;
   const f = p.fields;
-
-  const msLink     = f['Monthstayz website link']  || '';
-  const abnbLink   = f['Airbnb preview link']       || '';
-  const driveLink  = f['Google drive photos link']  || '';
-  const passcode   = f['Passcode']                  || '—';
-  const keys       = f['Where would be the keys?']  || '—';
-  const view       = Array.isArray(f['View type'])  ? f['View type'].join(', ') : (f['View type'] || '—');
-  const region     = f['Region (North or South)']   || '—';
+  const view     = Array.isArray(f['View type']) ? f['View type'].join(', ') : (f['View type'] || '—');
+  const msLink   = f['Monthstayz website link'] || '';
+  const abnbLink = f['Airbnb preview link']     || '';
+  const driveLink= f['Google drive photos link']|| '';
 
   document.getElementById('prop-modal-body').innerHTML = `
     <div class="modal-title">${esc(f['Internal listing name'] || '—')}</div>
-
     <div class="detail-section">
       <div class="detail-section-title">Property Details</div>
       <div class="detail-row"><div class="detail-label">Floor</div><div class="detail-value">${f['Floor'] != null ? f['Floor'] : '—'}</div></div>
       <div class="detail-row"><div class="detail-label">View Type</div><div class="detail-value">${esc(view)}</div></div>
       <div class="detail-row"><div class="detail-label">Location</div><div class="detail-value">${esc(f['Location'] || '—')}</div></div>
-      <div class="detail-row"><div class="detail-label">Region</div><div class="detail-value">${esc(region)}</div></div>
+      <div class="detail-row"><div class="detail-label">Region</div><div class="detail-value">${esc(f['Region (North or South)'] || '—')}</div></div>
       <div class="detail-row"><div class="detail-label">Size</div><div class="detail-value">${f['(m2) Property Size'] ? f['(m2) Property Size'] + ' m²' : '—'}</div></div>
       <div class="detail-row"><div class="detail-label">Tier</div><div class="detail-value">${esc(f['Standard/Deluxe/Premium'] || '—')}</div></div>
-      <div class="detail-row"><div class="detail-label">Bedrooms</div><div class="detail-value">${f['Number of bedrooms'] != null ? f['Number of bedrooms'] : '—'}</div></div>
+      <div class="detail-row"><div class="detail-label">Bedrooms</div><div class="detail-value">${f['Number of bedrooms']  != null ? f['Number of bedrooms']  : '—'}</div></div>
       <div class="detail-row"><div class="detail-label">Bathrooms</div><div class="detail-value">${f['Number of bathrooms'] != null ? f['Number of bathrooms'] : '—'}</div></div>
     </div>
-
     <div class="detail-section">
       <div class="detail-section-title">Access</div>
-      <div class="detail-row"><div class="detail-label">Passcode</div><div class="detail-value">${esc(passcode)}</div></div>
-      <div class="detail-row"><div class="detail-label">Keys Location</div><div class="detail-value">${esc(keys)}</div></div>
+      <div class="detail-row"><div class="detail-label">Passcode</div><div class="detail-value">${esc(f['Passcode'] || '—')}</div></div>
+      <div class="detail-row"><div class="detail-label">Keys Location</div><div class="detail-value">${esc(f['Where would be the keys?'] || '—')}</div></div>
     </div>
-
     <div class="detail-section">
       <div class="detail-section-title">Links</div>
       ${driveLink ? `<div class="detail-row"><div class="detail-label">📁 Photos</div><div class="detail-value"><a href="${esc(driveLink)}" target="_blank">View Drive Folder ↗</a></div></div>` : ''}
@@ -367,36 +376,26 @@ function openPropDetail(id) {
       ${abnbLink  ? `<div class="detail-row"><div class="detail-label">🏠 Airbnb</div><div class="detail-value"><a href="${esc(abnbLink)}" target="_blank">View Preview ↗</a></div></div>` : ''}
     </div>
   `;
-
   document.getElementById('prop-modal').classList.add('open');
 }
 
-function closePropModal(e) {
-  if (e.target === document.getElementById('prop-modal')) closePropModalDirect();
-}
-function closePropModalDirect() {
-  document.getElementById('prop-modal').classList.remove('open');
-}
+function closePropModal(e)  { if (e.target === document.getElementById('prop-modal')) closePropModalDirect(); }
+function closePropModalDirect() { document.getElementById('prop-modal').classList.remove('open'); }
 
 // ─── UTILS ────────────────────────────────────────────────────────────────────
 function fmtDate(iso) {
   if (!iso) return '—';
-  try {
-    const [y, m, d] = iso.split('-');
-    return `${d}/${m}/${y}`;
-  } catch { return iso; }
+  try { const [y,m,d] = iso.split('-'); return `${d}/${m}/${y}`; }
+  catch { return iso; }
 }
 
 function esc(str) {
-  if (!str) return '';
-  return String(str)
-    .replace(/&/g,'&amp;')
-    .replace(/</g,'&lt;')
-    .replace(/>/g,'&gt;')
-    .replace(/"/g,'&quot;');
+  return String(str || '')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-// ─── PWA SERVICE WORKER REGISTRATION ─────────────────────────────────────────
+// ─── PWA ──────────────────────────────────────────────────────────────────────
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(console.warn);
 }
