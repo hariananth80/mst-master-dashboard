@@ -349,7 +349,7 @@ function openPropDetail(id) {
   const view     = Array.isArray(f['View type']) ? f['View type'].join(', ') : (f['View type'] || '—');
   const msLink   = f['Monthstayz website link'] || '';
   const abnbLink = f['Airbnb preview link']     || '';
-  const driveLink= f['Google drive photos link']|| '';
+  const driveLink= f['Picture Drive Link']|| '';
 
   document.getElementById('prop-modal-body').innerHTML = `
     <div class="modal-title">${esc(f['Internal listing name'] || '—')}</div>
